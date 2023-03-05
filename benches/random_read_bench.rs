@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use io_uring_examples::{MmapDb, PreadDb, ReadDb};
+use io_uring_examples::{DirectPreadDb, MmapDb, PreadDb, ReadDb};
 use rand::Rng;
 
 pub fn read_bench(c: &mut Criterion) {
@@ -14,6 +14,15 @@ pub fn read_bench(c: &mut Criterion) {
 
     c.bench_function("pread_cached", |b| {
         let mut r = PreadDb::open("data/1k.dat").unwrap();
+        let mut prng = rand::thread_rng();
+        b.iter(|| {
+            let key: u32 = prng.gen_range(0..1_000);
+            let _ = black_box(r.get(key).unwrap());
+        })
+    });
+
+    c.bench_function("pread_direct", |b| {
+        let mut r = DirectPreadDb::open("data/1k.dat").unwrap();
         let mut prng = rand::thread_rng();
         b.iter(|| {
             let key: u32 = prng.gen_range(0..1_000);

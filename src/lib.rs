@@ -1,10 +1,12 @@
 use std::{
-    fs::{File, OpenOptions},
+    ffi::CString,
+    fs::File,
     io::{Seek, SeekFrom},
-    os::unix::prelude::{FileExt, OpenOptionsExt, OsStrExt},
+    os::unix::prelude::{FileExt, OsStrExt},
     path::Path,
 };
 
+use anyhow::anyhow;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use libc::c_void;
 use memmap::Mmap;
@@ -27,42 +29,51 @@ impl ReadDb {
     }
 }
 
-pub struct DirectReadDb {
+pub struct DirectPreadDb {
     fd: i32,
+    buf: [u8; 2 * BLOCK_WIDTH],
 }
 
-
 const BLOCK_WIDTH: usize = 512;
-const MASK: usize = !(BLOCK_WIDTH - 1);
-#[repr(C, align(512))]
-struct MyBuf([u8; 512]);
+const MASK: usize = BLOCK_WIDTH - 1;
 
-impl DirectReadDb {
+impl DirectPreadDb {
     pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        let path = path.as_ref().as_os_str();
-        println!("open({:?}, {}, {})", path, libc::O_DIRECT, libc::O_RDONLY);
-        let fd = unsafe { libc::open(path.as_bytes().as_ptr() as * const i8, libc::O_DIRECT, libc::O_RDONLY) };
-        println!("fd = {}", fd);
-        Ok(Self { fd })
+        // I hate this code and don't really know how much of it is necessary.
+        // I ran into issues where the path wasn't being properly null-terminated, resulting in file-not-found errors.
+        let path = CString::new(path.as_ref().as_os_str().as_bytes())?;
+        let fd = unsafe { libc::open(path.as_ptr() as *const i8, libc::O_DIRECT, libc::O_RDONLY) };
+        if fd < 0 {
+            return Err(anyhow!(std::io::Error::last_os_error()));
+        }
+
+        Ok(Self {
+            fd,
+            buf: [0; 2 * BLOCK_WIDTH],
+        })
     }
     pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
         let offset = WIDTH as u64 * key as u64;
         let intra_block_offset = offset % BLOCK_WIDTH as u64;
         let block_offset = offset - intra_block_offset;
-        let mut buf = [0; 2 * BLOCK_WIDTH];
-        let mut ptr = buf.as_mut_ptr() as usize & MASK;
-        println!("reading {} bytes (starting at {}), looking for offset={}", BLOCK_WIDTH, block_offset, offset);
-        println!("pread({}, {:?}, {}, {})", self.fd, ptr, BLOCK_WIDTH, block_offset);
-        let result = unsafe { libc::read(self.fd, ptr as *mut c_void, BLOCK_WIDTH) };
-        println!("read, got result = {}", result);
-        println!("{:?}", buf);
+        let alignment_offset = BLOCK_WIDTH - (self.buf.as_ptr() as usize & MASK);
+        let result = unsafe {
+            libc::pread(
+                self.fd,
+                (self.buf.as_ptr() as usize + alignment_offset) as *mut c_void,
+                BLOCK_WIDTH,
+                block_offset as i64,
+            )
+        };
         if result < 0 {
-            println!("last error = {:?}", std::io::Error::last_os_error());
+            return Err(anyhow!(std::io::Error::last_os_error()));
         }
-        Ok(LittleEndian::read_u32(&buf[intra_block_offset as usize..][..WIDTH]))
+        Ok(LittleEndian::read_u32(
+            &self.buf[alignment_offset + intra_block_offset as usize..][..WIDTH],
+        ))
     }
 }
-impl Drop for DirectReadDb {
+impl Drop for DirectPreadDb {
     fn drop(&mut self) {
         unsafe { libc::close(self.fd) };
     }
