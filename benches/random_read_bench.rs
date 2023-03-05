@@ -13,7 +13,7 @@ pub fn read_bench(c: &mut Criterion) {
     });
 
     c.bench_function("pread_cached", |b| {
-        let mut r = PreadDb::open("data/1k.dat").unwrap();
+        let r = PreadDb::open("data/1k.dat").unwrap();
         let mut prng = rand::thread_rng();
         b.iter(|| {
             let key: u32 = prng.gen_range(0..1_000);
@@ -22,7 +22,7 @@ pub fn read_bench(c: &mut Criterion) {
     });
 
     c.bench_function("pread_direct", |b| {
-        let mut r = DirectPreadDb::open("data/1k.dat").unwrap();
+        let r = DirectPreadDb::open("data/1k.dat").unwrap();
         let mut prng = rand::thread_rng();
         b.iter(|| {
             let key: u32 = prng.gen_range(0..1_000);
@@ -31,7 +31,7 @@ pub fn read_bench(c: &mut Criterion) {
     });
 
     c.bench_function("mmap_read", |b| {
-        let mut r = MmapDb::open("data/1k.dat").unwrap();
+        let r = MmapDb::open("data/1k.dat").unwrap();
         let mut prng = rand::thread_rng();
         b.iter(|| {
             let key: u32 = prng.gen_range(0..1_000);

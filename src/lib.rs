@@ -31,7 +31,6 @@ impl ReadDb {
 
 pub struct DirectPreadDb {
     fd: i32,
-    buf: [u8; 2 * BLOCK_WIDTH],
 }
 
 const BLOCK_WIDTH: usize = 512;
@@ -47,20 +46,19 @@ impl DirectPreadDb {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
 
-        Ok(Self {
-            fd,
-            buf: [0; 2 * BLOCK_WIDTH],
-        })
+        Ok(Self { fd, })
     }
-    pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
+    pub fn get(&self, key: u32) -> anyhow::Result<u32> {
         let offset = WIDTH as u64 * key as u64;
         let intra_block_offset = offset % BLOCK_WIDTH as u64;
         let block_offset = offset - intra_block_offset;
-        let alignment_offset = BLOCK_WIDTH - (self.buf.as_ptr() as usize & MASK);
+
+        let buf = [0; 2 * BLOCK_WIDTH];
+        let alignment_offset = BLOCK_WIDTH - (buf.as_ptr() as usize & MASK);
         let result = unsafe {
             libc::pread(
                 self.fd,
-                (self.buf.as_ptr() as usize + alignment_offset) as *mut c_void,
+                (buf.as_ptr() as usize + alignment_offset) as *mut c_void,
                 BLOCK_WIDTH,
                 block_offset as i64,
             )
@@ -69,7 +67,7 @@ impl DirectPreadDb {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
         Ok(LittleEndian::read_u32(
-            &self.buf[alignment_offset + intra_block_offset as usize..][..WIDTH],
+            &buf[alignment_offset + intra_block_offset as usize..][..WIDTH],
         ))
     }
 }
@@ -88,7 +86,7 @@ impl PreadDb {
         let underlying = File::open(path)?;
         Ok(Self { underlying })
     }
-    pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
+    pub fn get(&self, key: u32) -> anyhow::Result<u32> {
         let mut buf = [0; WIDTH];
         self.underlying
             .read_at(&mut buf, WIDTH as u64 * key as u64)?;
@@ -110,7 +108,7 @@ impl MmapDb {
             buf,
         })
     }
-    pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
+    pub fn get(&self, key: u32) -> anyhow::Result<u32> {
         Ok(LittleEndian::read_u32(
             &self.buf[WIDTH * key as usize..][..WIDTH],
         ))
