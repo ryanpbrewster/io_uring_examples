@@ -2,21 +2,26 @@ use std::{
     fs::File,
     io::{Seek, SeekFrom},
     os::unix::prelude::FileExt,
+    path::Path,
 };
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use memmap::Mmap;
+
+const WIDTH: usize = std::mem::size_of::<u32>();
 
 pub struct ReadDb {
     underlying: File,
 }
 
 impl ReadDb {
-    pub fn new(file: File) -> Self {
-        Self { underlying: file }
+    pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let underlying = File::open(path)?;
+        Ok(Self { underlying })
     }
     pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
-        self.underlying.seek(SeekFrom::Start(key as u64))?;
+        self.underlying
+            .seek(SeekFrom::Start(WIDTH as u64 * key as u64))?;
         Ok(self.underlying.read_u32::<LittleEndian>()?)
     }
 }
@@ -26,12 +31,14 @@ pub struct PreadDb {
 }
 
 impl PreadDb {
-    pub fn new(file: File) -> Self {
-        Self { underlying: file }
+    pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let underlying = File::open(path)?;
+        Ok(Self { underlying })
     }
     pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
         let mut buf = [0; WIDTH];
-        self.underlying.read_at(&mut buf, key as u64)?;
+        self.underlying
+            .read_at(&mut buf, WIDTH as u64 * key as u64)?;
         Ok(LittleEndian::read_u32(&buf))
     }
 }
@@ -41,12 +48,12 @@ pub struct MmapDb {
     buf: Mmap,
 }
 
-const WIDTH: usize = std::mem::size_of::<u32>();
 impl MmapDb {
-    pub fn new(file: File) -> anyhow::Result<Self> {
-        let buf = unsafe { memmap::Mmap::map(&file) }?;
+    pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let underlying = File::open(path)?;
+        let buf = unsafe { memmap::Mmap::map(&underlying) }?;
         Ok(Self {
-            _underlying: file,
+            _underlying: underlying,
             buf,
         })
     }
