@@ -46,7 +46,7 @@ impl DirectPreadDb {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
 
-        Ok(Self { fd, })
+        Ok(Self { fd })
     }
     pub fn get(&self, key: u32) -> anyhow::Result<u32> {
         let offset = WIDTH as u64 * key as u64;
