@@ -6,4 +6,7 @@ Benchmarking sync_read_direct: Warming up for 3.0000 sthread 'main' panicked at 
 ```
 
 This can happen if you try to open a file with `O_DIRECT` when it isn't properly
-aligned. O_DIRECT requires that files are some multiple of 512 bytes.
+aligned. O_DIRECT requires that files are some multiple of 512 bytes, and that
+the memory you're reading into is aligned (print out its pointer value, it
+should look like `7ffe4fc5e200`, and specifically SHOULD NOT look
+like`7ffe4fc5e1d0`).
