@@ -1,0 +1,23 @@
+[package]
+name = "io_uring_examples"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+byteorder = "1"
+clap = { version = "4", features = ["derive"] }
+libc = "0.2.139"
+memmap = "0.7.0"
+
+[dev-dependencies]
+criterion = "0.3"
+rand = { version = "0.8", features = ["small_rng"] }
+
+[[bin]]
+name = "generate_dataset"
+path = "src/bin/generate_dataset.rs"
+
+[[bench]]
+name = "random_read_bench"
+harness = false
