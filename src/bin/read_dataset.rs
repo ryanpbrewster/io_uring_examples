@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use io_uring_examples::ReadDb;
+use io_uring_examples::{ReadDb, DirectReadDb};
 
 #[derive(Parser)]
 struct Args {
@@ -15,10 +15,11 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let mut r = ReadDb::open(args.input)?;
+    let mut r = DirectReadDb::open(args.input).unwrap();
+    println!("opened!");
     let mut total = 0;
     for i in 0..args.count {
-        total += r.get(i)?;
+        total += r.get(i).unwrap();
     }
     println!("total = {}", total);
 
