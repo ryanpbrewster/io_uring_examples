@@ -15,7 +15,7 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let mut r = DirectPreadDb::open(args.input).unwrap();
+    let r = DirectPreadDb::open(args.input).unwrap();
     println!("opened!");
     let mut total = 0;
     for i in 0..args.count {

@@ -114,3 +114,32 @@ impl MmapDb {
         ))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::io::Write;
+
+    use byteorder::{LittleEndian, WriteBytesExt};
+    use tempfile::NamedTempFile;
+
+    use crate::DirectPreadDb;
+
+    fn setup_dataset(num_entries: u32) -> anyhow::Result<NamedTempFile> {
+        let mut named = tempfile::NamedTempFile::new()?;
+        let fout = named.as_file_mut();
+        for i in 0..num_entries {
+            fout.write_u32::<LittleEndian>(i)?;
+        }
+        fout.flush()?;
+        Ok(named)
+    }
+
+    #[test]
+    fn direct_pread_smoke() -> anyhow::Result<()> {
+        let dataset = setup_dataset(128)?;
+        let r = DirectPreadDb::open(dataset.path())?;
+        assert_eq!(r.get(0)?, 0);
+        assert_eq!(r.get(127)?, 127);
+        Ok(())
+    }
+}
