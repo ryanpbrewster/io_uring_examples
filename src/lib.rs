@@ -118,6 +118,29 @@ impl MmapDb {
     }
 }
 
+pub struct TokioUringDb {
+    underlying: tokio_uring::fs::File,
+}
+
+impl TokioUringDb {
+    pub async fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        use tokio_uring::fs::File;
+        let underlying = File::open(path).await?;
+        Ok(Self {
+            underlying: underlying,
+        })
+    }
+    pub async fn get(&self, key: u32) -> anyhow::Result<u32> {
+        let buf = vec![0; WIDTH];
+        let (res, buf) = self
+            .underlying
+            .read_at(buf, WIDTH as u64 * key as u64)
+            .await;
+        let _n = res?;
+        Ok(LittleEndian::read_u32(&buf))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::io::Write;
@@ -125,7 +148,7 @@ mod test {
     use byteorder::{LittleEndian, WriteBytesExt};
     use tempfile::NamedTempFile;
 
-    use crate::DirectPreadDb;
+    use crate::{DirectPreadDb, TokioUringDb};
 
     fn setup_dataset(num_entries: u32) -> anyhow::Result<NamedTempFile> {
         let mut named = tempfile::NamedTempFile::new()?;
@@ -144,5 +167,16 @@ mod test {
         assert_eq!(r.get(0)?, 0);
         assert_eq!(r.get(127)?, 127);
         Ok(())
+    }
+
+    #[test]
+    fn tokio_iouring_smoke() -> anyhow::Result<()> {
+        let dataset = setup_dataset(128)?;
+        tokio_uring::start(async {
+            let r = TokioUringDb::open(dataset.path()).await?;
+            assert_eq!(r.get(0).await?, 0);
+            assert_eq!(r.get(127).await?, 127);
+            Ok(())
+        })
     }
 }
