@@ -34,11 +34,15 @@ pub struct DirectPreadDb {
 }
 
 const BLOCK_WIDTH: usize = 512;
-const MASK: usize = BLOCK_WIDTH - 1;
+
+// O_DIRECT will reject operations if the file is not a multiple of 512 bytes in
+// size, or if the MEMORY passed in is not aligned to 512 byte chunks. This is
+// one way to coerce the allocator into giving us aligned memory.
+#[repr(align(4096))]
+struct Aligned([u8; BLOCK_WIDTH]);
 
 impl DirectPreadDb {
     pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        // I hate this code and don't really know how much of it is necessary.
         // I ran into issues where the path wasn't being properly null-terminated, resulting in file-not-found errors.
         let path = CString::new(path.as_ref().as_os_str().as_bytes())?;
         let fd = unsafe { libc::open(path.as_ptr() as *const i8, libc::O_DIRECT, libc::O_RDONLY) };
@@ -53,12 +57,11 @@ impl DirectPreadDb {
         let intra_block_offset = offset % BLOCK_WIDTH as u64;
         let block_offset = offset - intra_block_offset;
 
-        let buf = [0; 2 * BLOCK_WIDTH];
-        let alignment_offset = BLOCK_WIDTH - (buf.as_ptr() as usize & MASK);
+        let buf = Aligned([0; BLOCK_WIDTH]);
         let result = unsafe {
             libc::pread(
                 self.fd,
-                (buf.as_ptr() as usize + alignment_offset) as *mut c_void,
+                buf.0.as_ptr() as *mut c_void,
                 BLOCK_WIDTH,
                 block_offset as i64,
             )
@@ -67,7 +70,7 @@ impl DirectPreadDb {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
         Ok(LittleEndian::read_u32(
-            &buf[alignment_offset + intra_block_offset as usize..][..WIDTH],
+            &buf.0[intra_block_offset as usize..][..WIDTH],
         ))
     }
 }
