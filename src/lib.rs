@@ -77,6 +77,9 @@ impl Db for DirectPreadDb {
         if result < 0 {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
+        if (result as usize) < BLOCK_WIDTH {
+            return Err(anyhow!("incomplete read, want {}, got {}", BLOCK_WIDTH, result));
+        }
         Ok(LittleEndian::read_u64(
             &buf.0[intra_block_offset as usize..][..WIDTH],
         ))
@@ -101,8 +104,11 @@ impl PreadDb {
 impl Db for PreadDb {
     fn get(&self, key: u64) -> anyhow::Result<u64> {
         let mut buf = [0; WIDTH];
-        self.underlying
+        let n = self.underlying
             .read_at(&mut buf, WIDTH as u64 * key as u64)?;
+        if n != WIDTH {
+            return Err(anyhow!("unexpected read, want {}, got {}", WIDTH, n));
+        }
         Ok(LittleEndian::read_u64(&buf))
     }
 }
