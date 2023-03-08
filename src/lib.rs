@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io::{Seek, SeekFrom},
     os::unix::prelude::{FileExt, OsStrExt},
-    path::Path,
+    path::Path, sync::{Arc, Mutex},
 };
 
 use anyhow::anyhow;
@@ -11,21 +11,27 @@ use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use libc::c_void;
 use memmap::Mmap;
 
-const WIDTH: usize = std::mem::size_of::<u32>();
+const WIDTH: usize = std::mem::size_of::<u64>();
+
+pub trait Db : Send + Sync {
+    fn get(&self, key: u64) -> anyhow::Result<u64>;
+}
 
 pub struct ReadDb {
-    underlying: File,
+    underlying: Arc<Mutex<File>>,
 }
 
 impl ReadDb {
     pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let underlying = File::open(path)?;
-        Ok(Self { underlying })
+        Ok(Self { underlying: Arc::new(Mutex::new(underlying)) })
     }
-    pub fn get(&mut self, key: u32) -> anyhow::Result<u32> {
-        self.underlying
-            .seek(SeekFrom::Start(WIDTH as u64 * key as u64))?;
-        Ok(self.underlying.read_u32::<LittleEndian>()?)
+}
+impl Db for ReadDb {
+    fn get(&self, key: u64) -> anyhow::Result<u64> {
+        let mut g = self.underlying.lock().unwrap();
+        g.seek(SeekFrom::Start(WIDTH as u64 * key))?;
+        Ok(g.read_u64::<LittleEndian>()?)
     }
 }
 
@@ -52,7 +58,9 @@ impl DirectPreadDb {
 
         Ok(Self { fd })
     }
-    pub fn get(&self, key: u32) -> anyhow::Result<u32> {
+}
+impl Db for DirectPreadDb {
+    fn get(&self, key: u64) -> anyhow::Result<u64> {
         let offset = WIDTH as u64 * key as u64;
         let intra_block_offset = offset % BLOCK_WIDTH as u64;
         let block_offset = offset - intra_block_offset;
@@ -69,7 +77,7 @@ impl DirectPreadDb {
         if result < 0 {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
-        Ok(LittleEndian::read_u32(
+        Ok(LittleEndian::read_u64(
             &buf.0[intra_block_offset as usize..][..WIDTH],
         ))
     }
@@ -89,11 +97,13 @@ impl PreadDb {
         let underlying = File::open(path)?;
         Ok(Self { underlying })
     }
-    pub fn get(&self, key: u32) -> anyhow::Result<u32> {
+}
+impl Db for PreadDb {
+    fn get(&self, key: u64) -> anyhow::Result<u64> {
         let mut buf = [0; WIDTH];
         self.underlying
             .read_at(&mut buf, WIDTH as u64 * key as u64)?;
-        Ok(LittleEndian::read_u32(&buf))
+        Ok(LittleEndian::read_u64(&buf))
     }
 }
 
@@ -111,8 +121,10 @@ impl MmapDb {
             buf,
         })
     }
-    pub fn get(&self, key: u32) -> anyhow::Result<u32> {
-        Ok(LittleEndian::read_u32(
+}
+impl Db for MmapDb {
+    fn get(&self, key: u64) -> anyhow::Result<u64> {
+        Ok(LittleEndian::read_u64(
             &self.buf[WIDTH * key as usize..][..WIDTH],
         ))
     }
@@ -130,14 +142,14 @@ impl TokioUringDb {
             underlying: underlying,
         })
     }
-    pub async fn get(&self, key: u32) -> anyhow::Result<u32> {
+    pub async fn get(&self, key: u64) -> anyhow::Result<u64> {
         let buf = vec![0; WIDTH];
         let (res, buf) = self
             .underlying
             .read_at(buf, WIDTH as u64 * key as u64)
             .await;
         let _n = res?;
-        Ok(LittleEndian::read_u32(&buf))
+        Ok(LittleEndian::read_u64(&buf))
     }
 }
 
@@ -148,13 +160,13 @@ mod test {
     use byteorder::{LittleEndian, WriteBytesExt};
     use tempfile::NamedTempFile;
 
-    use crate::{DirectPreadDb, TokioUringDb};
+    use crate::{DirectPreadDb, TokioUringDb, Db};
 
-    fn setup_dataset(num_entries: u32) -> anyhow::Result<NamedTempFile> {
+    fn setup_dataset(num_entries: u64) -> anyhow::Result<NamedTempFile> {
         let mut named = tempfile::NamedTempFile::new()?;
         let fout = named.as_file_mut();
         for i in 0..num_entries {
-            fout.write_u32::<LittleEndian>(i)?;
+            fout.write_u64::<LittleEndian>(i)?;
         }
         fout.flush()?;
         Ok(named)
