@@ -76,8 +76,68 @@ p50=0.3 p99=32.6 p999=460.2 avg=4.7 total=4.701e7
 ```
 
 Yeah, there is some kind of hilarious discontinuity right around 4 GiB (which
-is suspiciously u32::MAX). I did check and transparent hugepages are enabled:
+is suspiciously right when the VM I'm benchmarking on runs out of RAM). I did
+check and transparent hugepages are enabled:
 ```
 admin@ip-172-31-24-253:~/io_uring_examples$ cat /sys/kernel/mm/transparent_hugepage/enabled
 [always] madvise never
 ```
+
+I think this is just what happens when you hit a bunch of page faults. Let's
+confirm. I'll let both the 4 GiB and 8 GiB workloads run for 100 million
+queries. I'm expecting the 8 GiB workload to hit way more page faults.
+```
+p50=0.3 p99=0.6 p999=4.5 avg=0.3 total=1.015e8
+ Performance counter stats for './target/release/read_dataset --input /home/admin/big.dat --max-key 536870912 --concurrency 2 --variant mmap':
+
+            107442      faults                                                      
+
+      31.756305782 seconds time elapsed
+
+      61.221542000 seconds user
+       1.485039000 seconds sys
+```
+```
+p50=0.3 p99=31.3 p999=450.8 avg=4.6 total=1.001e8
+ Performance counter stats for './target/release/read_dataset --input /home/admin/big.dat --max-key 1073741824 --concurrency 2 --variant mmap':
+          15658693      faults                                                      
+
+     238.343423262 seconds time elapsed
+
+      43.273421000 seconds user
+     284.094372000 seconds sys
+```
+
+Ooof, look at the difference in system time! We hit 145x as many faults, and
+spend nearly 200x as much time in the kernel.
+
+By contrast, if we use `O_DIRECT` to avoid the page cache entirely, I'm expecting to see basically zero faults, and much less time in the kernel.
+```
+p50=1.2 p99=1.5 p999=4.0 avg=1.3 total=1.001e8
+ Performance counter stats for './target/release/read_dataset --input /home/admin/big.dat --max-key 1073741824 --concurrency 2 --variant direct-pread':
+
+               871      faults                                                      
+
+      75.808721481 seconds time elapsed
+
+      38.492406000 seconds user
+     112.647794000 seconds sys
+```
+
+Hrm...well there aren't many faults, but that's still quite a lot of time in the kernel.
+
+One kind of interesting thing is comparing `pread` to `direct-pread`:
+```
+p50=1.4 p99=11.3 p999=20.1 avg=2.2 total=1.004e8
+ Performance counter stats for './target/release/read_dataset --input /home/admin/big.dat --max-key 1073741824 --concurrency 2 --variant pread':
+
+              1120      faults                                                      
+
+     124.951743039 seconds time elapsed
+
+      33.861756000 seconds user
+     180.965058000 seconds sys
+```
+
+Few faults, but overall notably slower, spending much more time in the kernel
+(presumably uselessly pouplating the page cache).
