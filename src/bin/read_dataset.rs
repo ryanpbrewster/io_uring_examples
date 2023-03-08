@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::{Instant, Duration}, sync::{Arc, Mutex}};
 
 use clap::{Parser, ValueEnum};
-use hdrhistogram::{Histogram, SyncHistogram};
+use hdrhistogram::Histogram;
 use io_uring_examples::{ReadDb, PreadDb, MmapDb, DirectPreadDb, Db};
 use rand::{Rng, rngs::SmallRng, SeedableRng};
 
@@ -57,12 +57,12 @@ fn main() {
         std::thread::sleep(Duration::from_millis(1_000));
         let hist = hist.lock().unwrap();
         println!(
-            "p50={} p99={} p999={} avg={:.1} total={}",
-            hist.value_at_quantile(0.50),
-            hist.value_at_quantile(0.99),
-            hist.value_at_quantile(0.999),
-            hist.mean(),
-            hist.len(),
+            "p50={:.1} p99={:.1} p999={:.1} avg={:.1} total={:.3e}",
+            1e-3 * hist.value_at_quantile(0.50) as f64,
+            1e-3 * hist.value_at_quantile(0.99) as f64,
+            1e-3 * hist.value_at_quantile(0.999) as f64,
+            1e-3 * hist.mean(),
+            hist.len() as f64,
         );
     }
 }
