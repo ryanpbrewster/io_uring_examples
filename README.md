@@ -141,3 +141,19 @@ p50=1.4 p99=11.3 p999=20.1 avg=2.2 total=1.004e8
 
 Few faults, but overall notably slower, spending much more time in the kernel
 (presumably uselessly pouplating the page cache).
+
+# The main event
+
+I would really like to see what io_uring can do. My initial attempts at this are pretty underwhelming:
+```
+p50=5.3 p99=17.7 p999=27.6 avg=6.3 total=3.429e7
+ Performance counter stats for './target/release/read_dataset --input /home/admin/big.dat --max-key 1073741824 --concurrency 2 --variant tokio-uring':
+
+              1002      faults
+
+     109.411990929 seconds time elapsed
+
+      37.627649000 seconds user
+      71.764365000 seconds sys
+```
+The performance is not amazing. Throughput is worse by nearly 3x. Maybe I need to pre-allocate the buffers and use `readv`? More exploration needed.
