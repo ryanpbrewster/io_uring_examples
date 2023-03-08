@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::{Instant, Duration}, sync::Arc};
+use std::{path::PathBuf, time::{Instant, Duration}, sync::{Arc, Mutex}};
 
 use clap::{Parser, ValueEnum};
 use hdrhistogram::{Histogram, SyncHistogram};
@@ -31,7 +31,7 @@ enum Variant {
 fn main() {
     let args = Args::parse();
 
-    let mut hist: SyncHistogram<u32> = SyncHistogram::from(Histogram::new(5).unwrap());
+    let hist: Arc<Mutex<Histogram<u32>>> = Arc::new(Mutex::new(Histogram::new(5).unwrap()));
 
     let r: Arc<dyn Db> = match args.variant {
         Variant::Read => Arc::new(ReadDb::open(args.input).unwrap()),
@@ -42,20 +42,20 @@ fn main() {
 
     for i in 0 .. args.concurrency {
         let r = r.clone();
-        let mut hist = hist.recorder();
+        let hist = hist.clone();
         std::thread::spawn(move || {
             let mut prng = SmallRng::seed_from_u64(i as u64);
             loop {
                 let start = Instant::now();
                 r.get(prng.gen_range(0 .. args.max_key)).unwrap();
-                hist.record(start.elapsed().as_nanos() as u64).unwrap();
+                hist.lock().unwrap().record(start.elapsed().as_nanos() as u64).unwrap();
             }
         });
     }
 
     loop {
         std::thread::sleep(Duration::from_millis(1_000));
-        hist.refresh();
+        let hist = hist.lock().unwrap();
         println!(
             "p50={} p99={} p999={} avg={:.1} total={}",
             hist.value_at_quantile(0.50),
