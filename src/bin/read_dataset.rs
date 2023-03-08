@@ -48,7 +48,8 @@ fn main() {
             loop {
                 let start = Instant::now();
                 r.get(prng.gen_range(0 .. args.max_key)).unwrap();
-                hist.lock().unwrap().record(start.elapsed().as_nanos() as u64).unwrap();
+                let elapsed = start.elapsed();
+                hist.lock().unwrap().record(elapsed.as_nanos() as u64).unwrap();
             }
         });
     }
