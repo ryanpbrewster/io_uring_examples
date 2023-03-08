@@ -64,3 +64,20 @@ p50=57.5 p99=890.5 p999=9139.5 avg=101.5 total=9.456e5
 ```
 
 These mmap numbers are bad enough that I'm pretty sure I need to enable huge pages.
+
+### mmap comparison
+
+```
+4 GiB
+p50=0.3 p99=0.6 p999=4.8 avg=0.3 total=8.164e7
+
+8 GiB
+p50=0.3 p99=32.6 p999=460.2 avg=4.7 total=4.701e7
+```
+
+Yeah, there is some kind of hilarious discontinuity right around 4 GiB (which
+is suspiciously u32::MAX). I did check and transparent hugepages are enabled:
+```
+admin@ip-172-31-24-253:~/io_uring_examples$ cat /sys/kernel/mm/transparent_hugepage/enabled
+[always] madvise never
+```
