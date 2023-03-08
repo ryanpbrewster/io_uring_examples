@@ -26,7 +26,7 @@ enum Variant {
     Pread,
     DirectPread,
     Mmap,
-    TokioUringDb,
+    TokioUring,
 }
 
 fn main() {
@@ -39,7 +39,7 @@ fn main() {
         Variant::Pread => Some(Arc::new(PreadDb::open(args.input).unwrap())),
         Variant::DirectPread => Some(Arc::new(DirectPreadDb::open(args.input).unwrap())),
         Variant::Mmap => Some(Arc::new(MmapDb::open(args.input).unwrap())),
-        Variant::TokioUringDb => {
+        Variant::TokioUring => {
             tokio_uring::start(async {
                 let r = Arc::new(TokioUringDb::open(args.input).await.unwrap());
                 for i in 0 .. args.concurrency {
@@ -55,6 +55,18 @@ fn main() {
                             hist.lock().unwrap().record(elapsed.as_nanos() as u64).unwrap();
                         }
                     });
+                }
+                loop {
+                    tokio::time::sleep(Duration::from_millis(1_000)).await;
+                    let hist = hist.lock().unwrap();
+                    println!(
+                        "p50={:.1} p99={:.1} p999={:.1} avg={:.1} total={:.3e}",
+                        1e-3 * hist.value_at_quantile(0.50) as f64,
+                        1e-3 * hist.value_at_quantile(0.99) as f64,
+                        1e-3 * hist.value_at_quantile(0.999) as f64,
+                        1e-3 * hist.mean(),
+                        hist.len() as f64,
+                    );
                 }
             });
             None
