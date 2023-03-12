@@ -87,7 +87,7 @@ fn main() {
             for i in 0..args.reads_per_iter {
                 let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
                 let r = unsafe {
-                    libc::pread64(
+                    libc::pread(
                         fd,
                         bufs[i].0.as_mut_ptr() as *mut libc::c_void,
                         BLOCK_WIDTH as usize,
