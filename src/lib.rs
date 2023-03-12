@@ -3,7 +3,8 @@ use std::{
     fs::File,
     io::{Seek, SeekFrom},
     os::unix::prelude::{FileExt, OsStrExt},
-    path::Path, sync::{Arc, Mutex},
+    path::Path,
+    sync::{Arc, Mutex},
 };
 
 use anyhow::anyhow;
@@ -13,7 +14,7 @@ use memmap::Mmap;
 
 const WIDTH: usize = std::mem::size_of::<u64>();
 
-pub trait Db : Send + Sync {
+pub trait Db: Send + Sync {
     fn get(&self, key: u64) -> anyhow::Result<u64>;
 }
 
@@ -24,7 +25,9 @@ pub struct ReadDb {
 impl ReadDb {
     pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let underlying = File::open(path)?;
-        Ok(Self { underlying: Arc::new(Mutex::new(underlying)) })
+        Ok(Self {
+            underlying: Arc::new(Mutex::new(underlying)),
+        })
     }
 }
 impl Db for ReadDb {
@@ -78,7 +81,11 @@ impl Db for DirectPreadDb {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
         if (result as usize) < BLOCK_WIDTH {
-            return Err(anyhow!("incomplete read, want {}, got {}", BLOCK_WIDTH, result));
+            return Err(anyhow!(
+                "incomplete read, want {}, got {}",
+                BLOCK_WIDTH,
+                result
+            ));
         }
         Ok(LittleEndian::read_u64(
             &buf.0[intra_block_offset as usize..][..WIDTH],
@@ -104,7 +111,8 @@ impl PreadDb {
 impl Db for PreadDb {
     fn get(&self, key: u64) -> anyhow::Result<u64> {
         let mut buf = [0; WIDTH];
-        let n = self.underlying
+        let n = self
+            .underlying
             .read_at(&mut buf, WIDTH as u64 * key as u64)?;
         if n != WIDTH {
             return Err(anyhow!("unexpected read, want {}, got {}", WIDTH, n));
@@ -166,7 +174,7 @@ mod test {
     use byteorder::{LittleEndian, WriteBytesExt};
     use tempfile::NamedTempFile;
 
-    use crate::{DirectPreadDb, TokioUringDb, Db};
+    use crate::{Db, DirectPreadDb, TokioUringDb};
 
     fn setup_dataset(num_entries: u64) -> anyhow::Result<NamedTempFile> {
         let mut named = tempfile::NamedTempFile::new()?;

@@ -14,6 +14,7 @@ tokio = {version = "1.26.0", features = ["full"] }
 tokio-uring = "0.4.0"
 rand = { version = "0.8", features = ["small_rng"] }
 hdrhistogram = "7.5.2"
+io-uring = "0.5.13"
 
 [dev-dependencies]
 criterion = "0.3"

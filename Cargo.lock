@@ -381,6 +381,7 @@ dependencies = [
  "clap 4.1.8",
  "criterion",
  "hdrhistogram",
+ "io-uring",
  "libc",
  "memmap",
  "rand",

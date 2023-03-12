@@ -1,9 +1,13 @@
-use std::{path::PathBuf, time::{Instant, Duration}, sync::{Arc, Mutex}};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use clap::{Parser, ValueEnum};
 use hdrhistogram::Histogram;
-use io_uring_examples::{ReadDb, PreadDb, MmapDb, DirectPreadDb, Db};
-use rand::{Rng, rngs::SmallRng, SeedableRng};
+use io_uring_examples::{Db, DirectPreadDb, MmapDb, PreadDb, ReadDb};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 #[derive(Parser)]
 struct Args {
@@ -40,16 +44,19 @@ fn main() {
         Variant::Mmap => Arc::new(MmapDb::open(args.input).unwrap()),
     };
 
-    for i in 0 .. args.concurrency {
+    for i in 0..args.concurrency {
         let r = r.clone();
         let hist = hist.clone();
         std::thread::spawn(move || {
             let mut prng = SmallRng::seed_from_u64(i as u64);
             loop {
                 let start = Instant::now();
-                r.get(prng.gen_range(0 .. args.max_key)).unwrap();
+                r.get(prng.gen_range(0..args.max_key)).unwrap();
                 let elapsed = start.elapsed();
-                hist.lock().unwrap().record(elapsed.as_nanos() as u64).unwrap();
+                hist.lock()
+                    .unwrap()
+                    .record(elapsed.as_nanos() as u64)
+                    .unwrap();
             }
         });
     }

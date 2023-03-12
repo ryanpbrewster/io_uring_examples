@@ -12,6 +12,14 @@ struct Args {
     count: u32,
 }
 
+#[derive(Copy, Clone, ValueEnum)]
+enum Variant {
+    Read,
+    Pread,
+    DirectPread,
+    Mmap,
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
