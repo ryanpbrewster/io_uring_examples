@@ -61,7 +61,7 @@ fn main() {
         );
     });
 
-    let mut prng = SmallRng::seed_from_u64(42);
+    let mut prng = SmallRng::from_entropy();
 
     let md = std::fs::metadata(&args.path).unwrap();
     let num_keys = md.len() / BLOCK_WIDTH;
