@@ -7,6 +7,7 @@ use std::{
 
 use clap::{Parser, ValueEnum};
 use hdrhistogram::{Histogram, SyncHistogram};
+use io_uring::{IoUring, opcode, types};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 #[derive(Parser)]
@@ -39,7 +40,7 @@ enum Method {
 const BLOCK_WIDTH: u64 = 512;
 
 #[repr(align(512))]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Aligned([u8; BLOCK_WIDTH as usize]);
 
 fn main() {
@@ -98,8 +99,21 @@ fn main() {
             let elapsed = start.elapsed();
             recorder.record(elapsed.as_nanos() as u64).unwrap();
         },
-        _ => {
-            todo!()
+        Method::Uring => {
+            let mut ring = IoUring::builder().build(args.reads_per_iter as u32).unwrap();
+            loop {
+                let start = Instant::now();
+                for i in 0..args.reads_per_iter {
+                    let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
+                    let sqe = opcode::Read::new(types::Fd(fd), bufs[i].0.as_mut_ptr(), bufs[i].0.len() as u32)
+                        .offset(offset as i64)
+                        .build();
+                    unsafe { ring.submission().push(&sqe) }.unwrap();
+                }
+                ring.submit_and_wait(args.reads_per_iter).unwrap();
+                let elapsed = start.elapsed();
+                recorder.record(elapsed.as_nanos() as u64).unwrap();
+            }
         }
     }
 }
