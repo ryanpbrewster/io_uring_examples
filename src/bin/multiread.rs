@@ -79,6 +79,7 @@ fn main() {
         Mode::Direct => libc::O_DIRECT,
     };
     let fd = unsafe { libc::open(cpath.as_ptr() as *const i8, flag, libc::O_RDONLY) };
+    println!("opened {:?} --> {}", cpath, fd);
 
     let mut bufs: Vec<Aligned> = vec![Aligned([0u8; BLOCK_WIDTH as usize]); args.reads_per_iter];
     match args.method {
@@ -101,6 +102,7 @@ fn main() {
         },
         Method::Uring => {
             let mut ring = IoUring::builder()
+                .setup_iopoll()
                 .build(args.reads_per_iter as u32)
                 .unwrap();
             loop {

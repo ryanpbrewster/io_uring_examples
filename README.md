@@ -157,3 +157,82 @@ p50=5.3 p99=17.7 p999=27.6 avg=6.3 total=3.429e7
       71.764365000 seconds sys
 ```
 The performance is not amazing. Throughput is worse by nearly 3x. Maybe I need to pre-allocate the buffers and use `readv`? More exploration needed.
+
+
+# Another round of io-uring testing
+
+Tried another approach more tuned to what io-uring is best at: multi-reads.
+
+### pure syscall overhead
+
+If we do a bunch of reads on a super tiny file, we should hit the page cache
+virtually every time. In such cases, we're not measuring any IO, just pure
+syscall overhead. io-uring is supposed to help here.
+
+Running
+```
+cargo run --bin multiread --release -- --path data/1m.dat --mode cached --method blocking --reads-per-iter 32
+```
+
+**blocking**
+```
+total=5097994 p50=8463 p99=14271 p999=24131 p9999=79053
+```
+
+**uring**
+```
+total=5040144 p50=10065 p99=14106 p999=20266 p9999=29800
+```
+
+### iopoll
+
+You can ask the Kernel to just poll-loop the storage device, rather than
+submitting IO and waiting for the device to issue an interrupt. Apparently this
+is more expensive, but better for latency.
+
+Experiments seem to confirm this. Numbers below in nanoseconds. I was slightly
+surprised that p50 degrades, but tail latency is enormously improved.
+
+**without iopoll**
+```
+total=4801582 p50=3473 p99=446107 p999=467365 p9999=479329
+```
+
+**with iopoll enabled**
+```
+total=4865508 p50=6640 p99=13803 p999=25418 p9999=128028
+```
+
+### practical 4x multi-reads with O_DIRECT
+
+**blocking**
+```
+cargo run --bin multiread --release -- --path data/32g.dat --mode direct --method blocking --reads-per-iter 4
+total=502751 p50=210294 p99=221259 p999=399129 p9999=847603
+```
+
+**uring w/ iopoll**
+```
+cargo run --bin multiread --release -- --path data/32g.dat --mode direct --method uring --reads-per-iter 4
+total=5005056 p50=6397 p99=13041 p999=16940 p9999=26839
+```
+
+These numbers are just crushingly good. I am at least 50% sure that these are
+real...but I should add some checksums or something so that I can validate that
+I'm actually reading all the data I expect to be reading.
+
+One interesting data point: without iopoll, the uring numbers are not nearly as good:
+```
+total=5048446 p50=3381 p99=452959 p999=471887 p9999=913451
+```
+
+Seems like the main thing going on here is that iopoll recruits a ton more CPU resources
+```
+         12,389.32 msec task-clock                #    0.353 CPUs utilized          
+            53,958      context-switches          #    4.355 K/sec                  
+```
+versus
+```
+         80,124.22 msec task-clock                #    2.031 CPUs utilized          
+         6,584,930      context-switches          #   82.184 K/sec                  
+```
