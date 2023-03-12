@@ -1,14 +1,12 @@
 use std::{
     ffi::CString,
-    fs::{File, OpenOptions},
-    os::{fd::AsRawFd, unix::prelude::OsStrExt},
+    os::{unix::prelude::OsStrExt},
     path::PathBuf,
     time::{Duration, Instant},
 };
 
 use clap::{Parser, ValueEnum};
 use hdrhistogram::{Histogram, SyncHistogram};
-use io_uring::types;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 #[derive(Parser)]
@@ -20,19 +18,10 @@ struct Args {
     reads_per_iter: usize,
 
     #[arg(long, value_enum)]
-    variant: Variant,
-
-    #[arg(long, value_enum)]
     mode: Mode,
 
     #[arg(long, value_enum)]
     method: Method,
-}
-
-#[derive(Copy, Clone, ValueEnum)]
-enum Variant {
-    Pread,
-    Preadv,
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -48,6 +37,10 @@ enum Method {
 }
 
 const BLOCK_WIDTH: u64 = 512;
+
+#[repr(align(512))]
+#[derive(Clone)]
+struct Aligned([u8; BLOCK_WIDTH as usize]);
 
 fn main() {
     let args = Args::parse();
@@ -86,9 +79,7 @@ fn main() {
     };
     let fd = unsafe { libc::open(cpath.as_ptr() as *const i8, flag, libc::O_RDONLY) };
 
-    let mut keys = vec![0; args.reads_per_iter];
-    let mut bufs: Vec<Vec<u8>> = vec![vec![0; BLOCK_WIDTH as usize]; args.reads_per_iter];
-
+    let mut bufs: Vec<Aligned> = vec![Aligned([0u8; BLOCK_WIDTH as usize]); args.reads_per_iter];
     match args.method {
         Method::Blocking => loop {
             let start = Instant::now();
@@ -97,16 +88,17 @@ fn main() {
                 let r = unsafe {
                     libc::pread64(
                         fd,
-                        bufs[i].as_mut_ptr() as *mut libc::c_void,
+                        bufs[i].0.as_mut_ptr() as *mut libc::c_void,
                         BLOCK_WIDTH as usize,
                         offset as i64,
                     )
                 };
+                assert!(r >= 0);
             }
             let elapsed = start.elapsed();
             recorder.record(elapsed.as_nanos() as u64).unwrap();
         },
-        Method::Uring => {
+        _ => {
             todo!()
         }
     }
