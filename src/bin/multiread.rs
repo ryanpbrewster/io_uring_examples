@@ -78,19 +78,19 @@ fn main() {
         Mode::Cached => 0,
         Mode::Direct => libc::O_DIRECT,
     };
-    let fd = unsafe { libc::open(cpath.as_ptr() as *const i8, flag, libc::O_RDONLY) };
+    let fd = unsafe { libc::open(cpath.as_ptr(), flag, libc::O_RDONLY) };
     println!("opened {:?} --> {}", cpath, fd);
 
     let mut bufs: Vec<Aligned> = vec![Aligned([0u8; BLOCK_WIDTH as usize]); args.reads_per_iter];
     match args.method {
         Method::Blocking => loop {
             let start = Instant::now();
-            for i in 0..args.reads_per_iter {
+            for Aligned(buf) in bufs.iter_mut().take(args.reads_per_iter) {
                 let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
                 let r = unsafe {
                     libc::pread(
                         fd,
-                        bufs[i].0.as_mut_ptr() as *mut libc::c_void,
+                        buf.as_mut_ptr() as *mut libc::c_void,
                         BLOCK_WIDTH as usize,
                         offset as i64,
                     )
@@ -107,15 +107,11 @@ fn main() {
                 .unwrap();
             loop {
                 let start = Instant::now();
-                for i in 0..args.reads_per_iter {
+                for Aligned(buf) in bufs.iter_mut().take(args.reads_per_iter) {
                     let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
-                    let sqe = opcode::Read::new(
-                        types::Fd(fd),
-                        bufs[i].0.as_mut_ptr(),
-                        bufs[i].0.len() as u32,
-                    )
-                    .offset(offset as i64)
-                    .build();
+                    let sqe = opcode::Read::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as u32)
+                        .offset(offset as i64)
+                        .build();
                     unsafe { ring.submission().push(&sqe) }.unwrap();
                 }
                 ring.submit_and_wait(args.reads_per_iter).unwrap();

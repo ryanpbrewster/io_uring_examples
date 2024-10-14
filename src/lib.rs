@@ -54,7 +54,7 @@ impl DirectPreadDb {
     pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         // I ran into issues where the path wasn't being properly null-terminated, resulting in file-not-found errors.
         let path = CString::new(path.as_ref().as_os_str().as_bytes())?;
-        let fd = unsafe { libc::open(path.as_ptr() as *const i8, libc::O_DIRECT, libc::O_RDONLY) };
+        let fd = unsafe { libc::open(path.as_ptr(), libc::O_DIRECT, libc::O_RDONLY) };
         if fd < 0 {
             return Err(anyhow!(std::io::Error::last_os_error()));
         }
@@ -64,7 +64,7 @@ impl DirectPreadDb {
 }
 impl Db for DirectPreadDb {
     fn get(&self, key: u64) -> anyhow::Result<u64> {
-        let offset = WIDTH as u64 * key as u64;
+        let offset = WIDTH as u64 * key;
         let intra_block_offset = offset % BLOCK_WIDTH as u64;
         let block_offset = offset - intra_block_offset;
 
@@ -111,9 +111,7 @@ impl PreadDb {
 impl Db for PreadDb {
     fn get(&self, key: u64) -> anyhow::Result<u64> {
         let mut buf = [0; WIDTH];
-        let n = self
-            .underlying
-            .read_at(&mut buf, WIDTH as u64 * key as u64)?;
+        let n = self.underlying.read_at(&mut buf, WIDTH as u64 * key)?;
         if n != WIDTH {
             return Err(anyhow!("unexpected read, want {}, got {}", WIDTH, n));
         }
@@ -152,16 +150,11 @@ impl TokioUringDb {
     pub async fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         use tokio_uring::fs::File;
         let underlying = File::open(path).await?;
-        Ok(Self {
-            underlying: underlying,
-        })
+        Ok(Self { underlying })
     }
     pub async fn get(&self, key: u64) -> anyhow::Result<u64> {
         let buf = vec![0; WIDTH];
-        let (res, buf) = self
-            .underlying
-            .read_at(buf, WIDTH as u64 * key as u64)
-            .await;
+        let (res, buf) = self.underlying.read_at(buf, WIDTH as u64 * key).await;
         let _n = res?;
         Ok(LittleEndian::read_u64(&buf))
     }
