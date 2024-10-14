@@ -85,7 +85,7 @@ fn main() {
     match args.method {
         Method::Blocking => loop {
             let start = Instant::now();
-            for Aligned(buf) in bufs.iter_mut().take(args.reads_per_iter) {
+            for Aligned(buf) in &mut bufs {
                 let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
                 let r = unsafe {
                     libc::pread(
@@ -107,7 +107,7 @@ fn main() {
                 .unwrap();
             loop {
                 let start = Instant::now();
-                for Aligned(buf) in bufs.iter_mut().take(args.reads_per_iter) {
+                for Aligned(buf) in &mut bufs {
                     let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
                     let sqe = opcode::Read::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as u32)
                         .offset(offset as i64)
