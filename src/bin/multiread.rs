@@ -101,7 +101,7 @@ fn main() {
             recorder.record(elapsed.as_nanos() as u64).unwrap();
         },
         Method::Uring => {
-            let mut ring = IoUring::builder()
+            let mut ring: IoUring<io_uring::squeue::Entry, io_uring::cqueue::Entry> = IoUring::builder()
                 .setup_iopoll()
                 .build(args.reads_per_iter as u32)
                 .unwrap();
@@ -110,7 +110,7 @@ fn main() {
                 for Aligned(buf) in &mut bufs {
                     let offset = prng.gen_range(0..num_keys) * BLOCK_WIDTH;
                     let sqe = opcode::Read::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as u32)
-                        .offset(offset as i64)
+                        .offset(offset)
                         .build();
                     unsafe { ring.submission().push(&sqe) }.unwrap();
                 }

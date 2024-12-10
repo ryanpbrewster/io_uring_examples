@@ -9,7 +9,7 @@ struct Args {
     output: PathBuf,
 
     #[arg(long)]
-    count: u32,
+    count: u64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut fout = File::create(args.output)?;
     for i in 0..args.count {
-        fout.write_u32::<LittleEndian>(i)?;
+        fout.write_u64::<LittleEndian>(i)?;
     }
 
     Ok(())
